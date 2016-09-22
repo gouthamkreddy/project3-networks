@@ -20,6 +20,7 @@
 #include "stcp_api.h"
 #include "transport.h"
 
+#define RECEIVER_WINDOW 3072
 
 enum { CSTATE_ESTABLISHED };    /* you should have more states */
 
@@ -70,14 +71,14 @@ void transport_init(mysocket_t sd, bool_t is_active)
         tcp_hdr->th_seq = ctx->initial_sequence_num;
         tcp_hdr->th_off = 5;
         tcp_hdr->th_flags = TH_SYN;
-        tcp_hdr->th_win = 3072;
+        tcp_hdr->th_win = RECEIVER_WINDOW;
         stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
-        stcp_wait_for_event(sd, stcp_event_type_t NETWORK_DATA, NULL);
-        stcp_network_recv(sd, tcp_hdr, size_t max_len);
+        // unsigned int ret = stcp_wait_for_event(sd, stcp_event_type_t NETWORK_DATA, NULL);
+        // stcp_network_recv(sd, tcp_hdr, size_t max_len);
     }
     else
     {
-        stcp_network_recv(mysocket_t sd, void *dst, size_t max_len);
+        // stcp_network_recv(sd, void *dst, size_t max_len);
         // send ack
     }
 
