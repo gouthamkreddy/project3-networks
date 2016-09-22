@@ -47,9 +47,13 @@ static void control_loop(mysocket_t sd, context_t *ctx);
 void transport_init(mysocket_t sd, bool_t is_active)
 {
     context_t *ctx;
+    tcphdr *tcp_hdr;
 
     ctx = (context_t *) calloc(1, sizeof(context_t));
+    tcp_hdr = (tcphdr *) calloc(1, sizeof(tcphdr));
+    
     assert(ctx);
+    assert(tcp_hdr);
 
     generate_initial_seq_num(ctx);
 
@@ -60,6 +64,24 @@ void transport_init(mysocket_t sd, bool_t is_active)
      * if connection fails; to do so, just set errno appropriately (e.g. to
      * ECONNREFUSED, etc.) before calling the function.
      */
+
+    if(is_active)
+    {
+        tcp_hdr->th_seq = ctx->initial_sequence_num;
+        tcp_hdr->th_off = 5;
+        tcp_hdr->th_flags = TH_SYN;
+        tcp_hdr->th_win = 3072;
+        stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+        stcp_wait_for_event(sd, stcp_event_type_t NETWORK_DATA, NULL);
+        stcp_network_recv(sd, tcp_hdr, size_t max_len);
+    }
+    else
+    {
+        stcp_network_recv(mysocket_t sd, void *dst, size_t max_len);
+        // send ack
+    }
+
+
     ctx->connection_state = CSTATE_ESTABLISHED;
     stcp_unblock_application(sd);
 
@@ -80,7 +102,8 @@ static void generate_initial_seq_num(context_t *ctx)
     ctx->initial_sequence_num = 1;
 #else
     /* you have to fill this up */
-    /*ctx->initial_sequence_num =;*/
+    int r = rand() % 256;
+    ctx->initial_sequence_num = r;
 #endif
 }
 
