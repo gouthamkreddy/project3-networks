@@ -32,10 +32,10 @@ typedef struct
 
     int connection_state;   /* state of the connection (established, etc.) */
     tcp_seq initial_sequence_num;
-    tcp_seq server_sequence_num;
-    tcp_seq client_sequence_num;
-    int server_window_size;
-    int client_window_size;
+    tcp_seq opp_sequence_num;
+    tcp_seq ack_num;
+    tcp_seq opp_ack_num;
+    int opp_window_size;
     tcp_seq current_sequence_num;
 
     /* any other connection-wide global variables go here */
@@ -90,8 +90,8 @@ void transport_init(mysocket_t sd, bool_t is_active)
         our_dprintf("SYN-ACK Packet received");
         if ((tcp_hdr->th_flags & TH_ACK) && (tcp_hdr->th_flags & TH_SYN) && (tcp_hdr->th_ack == ctx->current_sequence_num))
         {
-            ctx->server_sequence_num = tcp_hdr->th_seq;
-            ctx->server_window_size = tcp_hdr->th_win;
+            ctx->opp_sequence_num = tcp_hdr->th_seq;
+            ctx->opp_window_size = tcp_hdr->th_win;
         }
         else
         {
@@ -101,7 +101,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         /*--- ACK Packet ---*/
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
         tcp_hdr->th_seq = ctx->current_sequence_num;
-        tcp_hdr->th_ack = ctx->server_sequence_num + 1;
+        tcp_hdr->th_ack = ctx->opp_sequence_num + 1;
         tcp_hdr->th_off = 5;
         tcp_hdr->th_flags |= TH_ACK;
         tcp_hdr->th_win = RECEIVER_WINDOW; // - (client_sequence_num - initial_sequence_num);
@@ -115,8 +115,8 @@ void transport_init(mysocket_t sd, bool_t is_active)
         recv_pkt_size = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
         if (tcp_hdr->th_flags & TH_SYN)
         {
-            ctx->client_sequence_num = tcp_hdr->th_seq;
-            ctx->client_window_size = tcp_hdr->th_win;
+            ctx->opp_sequence_num = tcp_hdr->th_seq;
+            ctx->opp_window_size = tcp_hdr->th_win;
         }
         else
         {
@@ -139,8 +139,8 @@ void transport_init(mysocket_t sd, bool_t is_active)
         recv_pkt_size = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
         if ((tcp_hdr->th_flags & TH_ACK) && (tcp_hdr->th_ack == ctx->current_sequence_num))
         {
-            ctx->client_sequence_num = tcp_hdr->th_seq;
-            ctx->client_window_size = tcp_hdr->th_win;
+            ctx->opp_sequence_num = tcp_hdr->th_seq;
+            ctx->opp_window_size = tcp_hdr->th_win;
         }
 
     }
@@ -200,16 +200,26 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         if (event & APP_DATA)
         {
             stcp_app_recv(sd, tcp_pkt, sizeof(tcphdr));
+
             send_pkt_size = stcp_network_send(sd, tcp_pkt, sizeof(tcphdr), NULL);
         } 
         else if (event & NETWORK_DATA)
         {
             stcp_network_recv(sd, tcp_pkt, sizeof(tcphdr));
+            ctx->opp_sequence_num = tcp_hdr->th_seq;
+            ctx->opp_window_size = tcp_hdr->th_win;
+
+            bzero((tcphdr *)tcp_pkt, sizeof(tcphdr));
+            tcp_hdr->th_seq = ctx->current_sequence_num;
+            tcp_hdr->th_ack = ctx->opp_sequence_num + 1;
+            tcp_hdr->th_off = 5;
+            // tcp_hdr->th_flags |= TH_ACK;
+            // tcp_hdr->th_win = RECEIVER_WINDOW;
             stcp_app_send(sd, tcp_pkt, sizeof(tcphdr));
         }
         else if (event & APP_CLOSE_REQUESTED)
         {
-            
+
         }
 
         /* etc. */
