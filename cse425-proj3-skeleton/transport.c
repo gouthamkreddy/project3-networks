@@ -54,7 +54,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
 {
     context_t *ctx;
     tcphdr *tcp_hdr;
-    int send_pkt, recv_pkt;
+    int send_pkt_size, recv_pkt_size;
 
     ctx = (context_t *) calloc(1, sizeof(context_t));
     tcp_hdr = (tcphdr *) calloc(1, sizeof(tcphdr));
@@ -80,14 +80,14 @@ void transport_init(mysocket_t sd, bool_t is_active)
         tcp_hdr->th_flags |= TH_SYN;
         tcp_hdr->th_win = RECEIVER_WINDOW;
         ctx->current_sequence_num++;
-        send_pkt = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
-        printf("SYN Packet send");
+        send_pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+        our_dprintf("SYN Packet send");
 
         /*--- Receive SYN-ACK Packet ---*/
         // unsigned int ret_pkt = stcp_wait_for_event(sd, stcp_event_type_t NETWORK_DATA, NULL);
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
-        recv_pkt = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
-        printf("SYN-ACK Packet received");
+        recv_pkt_size = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
+        our_dprintf("SYN-ACK Packet received");
         if ((tcp_hdr->th_flags & TH_ACK) && (tcp_hdr->th_flags & TH_SYN) && (tcp_hdr->th_ack == ctx->current_sequence_num))
         {
             ctx->server_sequence_num = tcp_hdr->th_seq;
@@ -106,13 +106,13 @@ void transport_init(mysocket_t sd, bool_t is_active)
         tcp_hdr->th_flags |= TH_ACK;
         tcp_hdr->th_win = RECEIVER_WINDOW; // - (client_sequence_num - initial_sequence_num);
         ctx->current_sequence_num++;
-        send_pkt = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+        send_pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
 
     }
     else
     {
         /*--- Receive SYN Packet ---*/
-        recv_pkt = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
+        recv_pkt_size = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
         if (tcp_hdr->th_flags & TH_SYN)
         {
             ctx->client_sequence_num = tcp_hdr->th_seq;
@@ -132,11 +132,11 @@ void transport_init(mysocket_t sd, bool_t is_active)
         tcp_hdr->th_flags |= TH_ACK;
         tcp_hdr->th_win = RECEIVER_WINDOW;
         ctx->current_sequence_num++;
-        send_pkt = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+        send_pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
 
         /*--- Receive ACK Packet ---*/
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
-        recv_pkt = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
+        recv_pkt_size = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
         if ((tcp_hdr->th_flags & TH_ACK) && (tcp_hdr->th_ack == ctx->current_sequence_num))
         {
             ctx->client_sequence_num = tcp_hdr->th_seq;
@@ -184,6 +184,9 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 {
     assert(ctx);
     assert(!ctx->done);
+    tcphdr *tcp_pkt;
+    tcp_pkt = (tcphdr *) calloc(1, sizeof(tcphdr));
+    int send_pkt_size, recv_pkt_size;
 
     while (!ctx->done)
     {
@@ -192,12 +195,21 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         /* see stcp_api.h or stcp_api.c for details of this function */
         /* XXX: you will need to change some of these arguments! */
         event = stcp_wait_for_event(sd, 0, NULL);
-
+        bzero((tcphdr *)tcp_pkt, sizeof(tcphdr));
         /* check whether it was the network, app, or a close request */
         if (event & APP_DATA)
         {
-            /* the application has requested that data be sent */
-            /* see stcp_app_recv() */
+            stcp_app_recv(sd, tcp_pkt, sizeof(tcphdr));
+            send_pkt_size = stcp_network_send(sd, tcp_pkt, sizeof(tcphdr), NULL);
+        } 
+        else if (event & NETWORK_DATA)
+        {
+            stcp_network_recv(sd, tcp_pkt, sizeof(tcphdr));
+            stcp_app_send(sd, tcp_pkt, sizeof(tcphdr));
+        }
+        else if (event & APP_CLOSE_REQUESTED)
+        {
+            
         }
 
         /* etc. */
