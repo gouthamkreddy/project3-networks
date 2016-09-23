@@ -80,38 +80,48 @@ void transport_init(mysocket_t sd, bool_t is_active)
         tcp_hdr->th_flags |= TH_SYN;
         tcp_hdr->th_win = RECEIVER_WINDOW;
         ctx->current_sequence_num++;
-        
         send_pkt = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
         printf("SYN Packet send");
 
-        /*--- SYN-ACK Packet ---*/
+        /*--- Receive SYN-ACK Packet ---*/
         // unsigned int ret_pkt = stcp_wait_for_event(sd, stcp_event_type_t NETWORK_DATA, NULL);
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
         recv_pkt = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
         printf("SYN-ACK Packet received");
-        if ((tcp_hdr->th_flags & TH_ACK) && (tcp_hdr->th_ack == ctx->current_sequence_num))
+        if ((tcp_hdr->th_flags & TH_ACK) && (tcp_hdr->th_flags & TH_SYN) && (tcp_hdr->th_ack == ctx->current_sequence_num))
         {
             ctx->server_sequence_num = tcp_hdr->th_seq;
             ctx->server_window_size = tcp_hdr->th_win;
-            
-            /*--- ACK Packet ---*/
-            bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
-            tcp_hdr->th_seq = ctx->current_sequence_num;
-            tcp_hdr->th_ack = ctx->server_sequence_num + 1;
-            tcp_hdr->th_off = 5;
-            tcp_hdr->th_flags |= TH_ACK;
-            // tcp_hdr->th_win = RECEIVER_WINDOW + ;
-            ctx->current_sequence_num++;
-            send_pkt = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+        }
+        else
+        {
+            //error;
         }
 
+        /*--- ACK Packet ---*/
+        bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
+        tcp_hdr->th_seq = ctx->current_sequence_num;
+        tcp_hdr->th_ack = ctx->server_sequence_num + 1;
+        tcp_hdr->th_off = 5;
+        tcp_hdr->th_flags |= TH_ACK;
+        tcp_hdr->th_win = RECEIVER_WINDOW; // - (client_sequence_num - initial_sequence_num);
+        ctx->current_sequence_num++;
+        send_pkt = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
 
     }
     else
     {
+        /*--- Receive SYN Packet ---*/
         recv_pkt = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
-        ctx->client_sequence_num = tcp_hdr->th_seq;
-        ctx->client_window_size = tcp_hdr->th_win;
+        if (tcp_hdr->th_flags & TH_SYN)
+        {
+            ctx->client_sequence_num = tcp_hdr->th_seq;
+            ctx->client_window_size = tcp_hdr->th_win;
+        }
+        else
+        {
+            //error;
+        }
 
         /*--- SYN-ACK Packet ---*/
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
@@ -120,15 +130,13 @@ void transport_init(mysocket_t sd, bool_t is_active)
         tcp_hdr->th_off = 5;
         tcp_hdr->th_flags |= TH_SYN;
         tcp_hdr->th_flags |= TH_ACK;
-        // tcp_hdr->th_win = RECEIVER_WINDOW + ;
+        tcp_hdr->th_win = RECEIVER_WINDOW;
         ctx->current_sequence_num++;
         send_pkt = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
 
         /*--- Receive ACK Packet ---*/
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
         recv_pkt = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
-        ctx->client_sequence_num = tcp_hdr->th_seq;
-        ctx->client_window_size = tcp_hdr->th_win;
         if ((tcp_hdr->th_flags & TH_ACK) && (tcp_hdr->th_ack == ctx->current_sequence_num))
         {
             ctx->client_sequence_num = tcp_hdr->th_seq;
