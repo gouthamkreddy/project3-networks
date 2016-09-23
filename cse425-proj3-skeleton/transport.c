@@ -32,6 +32,11 @@ typedef struct
 
     int connection_state;   /* state of the connection (established, etc.) */
     tcp_seq initial_sequence_num;
+    tcp_seq server_sequence_num;
+    tcp_seq client_sequence_num;
+    int server_window_size;
+    int client_window_size;
+    tcp_seq current_sequence_num;
 
     /* any other connection-wide global variables go here */
 } context_t;
@@ -49,6 +54,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
 {
     context_t *ctx;
     tcphdr *tcp_hdr;
+    int send_pkt, recv_pkt;
 
     ctx = (context_t *) calloc(1, sizeof(context_t));
     tcp_hdr = (tcphdr *) calloc(1, sizeof(tcphdr));
@@ -68,18 +74,44 @@ void transport_init(mysocket_t sd, bool_t is_active)
 
     if(is_active)
     {
+        /*--- SYN Packet ---*/
         tcp_hdr->th_seq = ctx->initial_sequence_num;
         tcp_hdr->th_off = 5;
-        tcp_hdr->th_flags = TH_SYN;
+        tcp_hdr->th_flags |= TH_SYN;
         tcp_hdr->th_win = RECEIVER_WINDOW;
-        stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
-        // unsigned int ret = stcp_wait_for_event(sd, stcp_event_type_t NETWORK_DATA, NULL);
-        // stcp_network_recv(sd, tcp_hdr, size_t max_len);
+        ctx->current_sequence_num++;
+        
+        send_pkt = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+        printf("SYN Packet send");
+
+        /*--- SYN-ACK Packet ---*/
+        // unsigned int ret_pkt = stcp_wait_for_event(sd, stcp_event_type_t NETWORK_DATA, NULL);
+        bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
+        recv_pkt = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
+        printf("SYN-ACK Packet received");
+        if ((tcp_hdr->th_flags & TH_ACK) && (tcp_hdr->th_ack == ctx->current_sequence_number))
+        {
+            ctx->server_sequence_num = tcp_hdr->th_seq;
+            ctx->server_window_size = tcp_hdr->th_win;
+            
+            /*--- ACK Packet ---*/
+            bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
+            tcp_hdr->th_seq = ctx->current_sequence_num;
+            tcp_hdr->th_ack = ctx->server_sequence_num + 1;
+            tcp_hdr->th_off = 5;
+            tcp_hdr->th_flags |= TH_ACK;
+            // tcp_hdr->th_win = RECEIVER_WINDOW + ;
+            ctx->current_sequence_num++;
+            send_pkt = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+        }
+
+
     }
     else
     {
-        // stcp_network_recv(sd, void *dst, size_t max_len);
-        // send ack
+        recv_pkt = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
+        ctx->client_sequence_num = tcp_hdr->th_seq;
+        ctx->client_window_size = tcp_hdr->th_win;
     }
 
 
@@ -105,6 +137,7 @@ static void generate_initial_seq_num(context_t *ctx)
     /* you have to fill this up */
     int r = rand() % 256;
     ctx->initial_sequence_num = r;
+    ctx->current_sequence_number = ctx->initial_sequence_num;
 #endif
 }
 
