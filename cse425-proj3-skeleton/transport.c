@@ -184,9 +184,11 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 {
     assert(ctx);
     assert(!ctx->done);
-    tcphdr *tcp_pkt;
-    tcp_pkt = (tcphdr *) calloc(1, sizeof(tcphdr));
-    int pkt_size;
+    tcphdr *tcp_hdr;
+    char* payload;
+    tcp_hdr = (tcphdr *) calloc(1, sizeof(tcphdr));
+    payload = (char *) calloc(1, STCP_MSS);
+    int payload_size, pkt_size;
 
     while (!ctx->done)
     {
@@ -195,20 +197,21 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         /* see stcp_api.h or stcp_api.c for details of this function */
         /* XXX: you will need to change some of these arguments! */
         event = stcp_wait_for_event(sd, 0, NULL);
-        bzero((tcphdr *)tcp_pkt, sizeof(tcphdr));
+        bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
+        bzero((char *)payload, STCP_MSS);
         /* check whether it was the network, app, or a close request */
         if (event & APP_DATA)
         {
-            pkt_size = stcp_app_recv(sd, tcp_pkt, MIN(opp_window_size,MSS));
+            payload_size = stcp_app_recv(sd, payload, MIN(opp_window_size, STCP_MSS));
             tcp_hdr->th_seq = ctx->current_sequence_num;
             ctx->current_sequence_num++;
             tcp_hdr->th_off = 5;
-            tcp_hdr->th_win = RECEIVER_WINDOW - (current_sequence_num - ack_num);
-            pkt_size = stcp_network_send(sd, tcp_pkt, sizeof(tcphdr), NULL);
+            tcp_hdr->th_win = RECEIVER_WINDOW - (current_sequence_num - ack_num)*sizeof(uint32_t);
+            pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), payload, payload_size, NULL);
         } 
         else if (event & NETWORK_DATA)
         {
-            pkt_size = stcp_network_recv(sd, tcp_pkt, sizeof(tcphdr));
+            pkt_size = stcp_network_recv(sd, payload, STCP_MSS);
             if (tcp_hdr->th_flags & TH_ACK)
             {
                 ctx->ack_num = tcp_hdr->th_ack;
@@ -218,13 +221,14 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             {
                 ctx->opp_sequence_num = tcp_hdr->th_seq;
                 ctx->opp_window_size = tcp_hdr->th_win;
-                stcp_app_send(sd, tcp_pkt, pkt_size);
+                payload_size = stcp_app_send(sd, payload+5*sizeof(uint32_t), pkt_size-5*sizeof(uint32_t));
 
-                bzero((tcphdr *)tcp_pkt, sizeof(tcphdr));
+                bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
                 tcp_hdr->th_ack = ctx->opp_sequence_num + 1;
                 tcp_hdr->th_off = 5;
                 tcp_hdr->th_flags |= TH_ACK;
-                tcp_hdr->th_win = RECEIVER_WINDOW - (current_sequence_num - ack_num);
+                tcp_hdr->th_win = RECEIVER_WINDOW - (current_sequence_num - ack_num)*sizeof(uint32_t);
+                pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
             }
         }
         else if (event & APP_CLOSE_REQUESTED)
