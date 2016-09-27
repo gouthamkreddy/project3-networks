@@ -44,7 +44,7 @@ typedef struct
 
 static void generate_initial_seq_num(context_t *ctx);
 static void control_loop(mysocket_t sd, context_t *ctx);
-
+void our_dprintf(const char *format,...);
 
 /* initialise the transport layer, and start the main loop, handling
  * any data from the peer or the application.  this function should not
@@ -84,7 +84,6 @@ void transport_init(mysocket_t sd, bool_t is_active)
         our_dprintf("SYN Packet send");
 
         /*--- Receive SYN-ACK Packet ---*/
-        // unsigned int ret_pkt = stcp_wait_for_event(sd, stcp_event_type_t NETWORK_DATA, NULL);
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
         recv_pkt_size = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
         our_dprintf("SYN-ACK Packet received");
@@ -104,7 +103,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         tcp_hdr->th_ack = ctx->opp_sequence_num + 1;
         tcp_hdr->th_off = 5;
         tcp_hdr->th_flags |= TH_ACK;
-        tcp_hdr->th_win = RECEIVER_WINDOW; // - (client_sequence_num - initial_sequence_num);
+        tcp_hdr->th_win = RECEIVER_WINDOW;
         ctx->current_sequence_num++;
         send_pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
 
@@ -197,17 +196,31 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         /* see stcp_api.h or stcp_api.c for details of this function */
         /* XXX: you will need to change some of these arguments! */
         event = stcp_wait_for_event(sd, 0, NULL);
-        bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
         bzero((char *)payload, STCP_MSS);
         /* check whether it was the network, app, or a close request */
         if (event & APP_DATA)
         {
-            payload_size = stcp_app_recv(sd, payload, MIN(opp_window_size, STCP_MSS));
-            tcp_hdr->th_seq = ctx->current_sequence_num;
-            ctx->current_sequence_num++;
-            tcp_hdr->th_off = 5;
-            tcp_hdr->th_win = RECEIVER_WINDOW - (current_sequence_num - ack_num)*sizeof(uint32_t);
-            pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), payload, payload_size, NULL);
+            payload_size = stcp_app_recv(sd, payload, opp_window_size);
+            while (payload_size <= 0)
+            {
+                bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
+                tcp_hdr->th_seq = ctx->current_sequence_num;
+                ctx->current_sequence_num++;
+                tcp_hdr->th_off = 5;
+                tcp_hdr->th_win = RECEIVER_WINDOW - (current_sequence_num - ack_num)*sizeof(uint32_t);
+                if(payload_size > STCP_MSS)
+                {
+                    pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), payload, payload_size, NULL);
+                    payload_size = payload_size - (pkt_size-20);
+                }
+                else
+                {
+                    pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), payload, payload_size, NULL);
+                    payload_size = payload_size - (pkt_size-20);
+                    break;
+                }
+                payload = payload + payload_size;
+            }
         } 
         else if (event & NETWORK_DATA)
         {
@@ -219,9 +232,10 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             }
             else
             {
+                bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
                 ctx->opp_sequence_num = tcp_hdr->th_seq;
                 ctx->opp_window_size = tcp_hdr->th_win;
-                payload_size = stcp_app_send(sd, payload+5*sizeof(uint32_t), pkt_size-5*sizeof(uint32_t));
+                payload_size = stcp_app_send(sd, payload+(tcp_hdr->th_off)*sizeof(uint32_t), pkt_size-5*sizeof(uint32_t));
 
                 bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
                 tcp_hdr->th_ack = ctx->opp_sequence_num + 1;
