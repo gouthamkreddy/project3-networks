@@ -235,7 +235,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
                 ctx->opp_sequence_num = tcp_hdr->th_seq;
                 ctx->opp_window_size = tcp_hdr->th_win;
-                payload_size = stcp_app_send(sd, payload+(tcp_hdr->th_off)*sizeof(uint32_t), pkt_size-(tcp_hdr->th_off)*sizeof(uint32_t));
+                stcp_app_send(sd, payload+(tcp_hdr->th_off)*sizeof(uint32_t), pkt_size-(tcp_hdr->th_off)*sizeof(uint32_t));
 
                 bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
                 tcp_hdr->th_ack = ctx->opp_sequence_num + 1;
