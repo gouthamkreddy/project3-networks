@@ -237,6 +237,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             pkt_size = stcp_network_recv(sd, payload, STCP_MSS+20);
             bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
             tcp_hdr = (tcphdr *)payload;
+            our_dprintf("flags %d\n", tcp_hdr->th_flags)
             if (tcp_hdr->th_flags & TH_ACK)
             {
                 ctx->ack_num = tcp_hdr->th_ack;
