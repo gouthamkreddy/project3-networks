@@ -203,11 +203,12 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         event = stcp_wait_for_event(sd, ANY_EVENT, NULL);
         our_dprintf("event occured\n");
         bzero((char *)payload, STCP_MSS);
+        int current_sender_window = SENDER_WINDOW - (ctx->current_sequence_num - ctx->ack_num);
         /* check whether it was the network, app, or a close request */
-        if (event & APP_DATA)
+        if ((event & APP_DATA) && (current_sender_window > 0))
         {
             our_dprintf("APP_DATA\n");
-            int current_sender_window = SENDER_WINDOW - (ctx->current_sequence_num - ctx->ack_num);
+            
             payload_size = stcp_app_recv(sd, payload, current_sender_window);
             our_dprintf("payload_size: %d %d\n",payload_size,current_sender_window);
             while (payload_size > 0)
