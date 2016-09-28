@@ -105,9 +105,9 @@ main(int argc, char *argv[])
         perror("myconnect");
         exit(1);
     }
-
+    printf("myconnect\n");
     loop_until_end(sd);
-
+    
     if (myclose(sd) < 0)
     {
         perror("myclose");
@@ -167,6 +167,7 @@ loop_until_end(int sd)
             errcnd = 1;
             break;
         }
+        printf("mywrite stuck\n");
 
         if (get_nvt_line(sd, line) < 0)
         {
