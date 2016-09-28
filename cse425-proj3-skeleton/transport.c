@@ -275,6 +275,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 tcp_hdr->th_flags |= TH_ACK;
                 tcp_hdr->th_win = RECEIVER_WINDOW;
                 pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+                our_dprintf("ack packet size: %d\n",pkt_size);
             }
         }
         if (event & APP_CLOSE_REQUESTED)
