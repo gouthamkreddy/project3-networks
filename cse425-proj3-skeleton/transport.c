@@ -200,7 +200,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         
         /* see stcp_api.h or stcp_api.c for details of this function */
         /* XXX: you will need to change some of these arguments! */
-        event = stcp_wait_for_event(sd, 0, NULL);
+        event = stcp_wait_for_event(sd, ANY_EVENT, NULL);
         our_dprintf("event occured\n");
         bzero((char *)payload, STCP_MSS);
         /* check whether it was the network, app, or a close request */
@@ -241,8 +241,9 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             {
                 ctx->ack_num = tcp_hdr->th_ack;
                 ctx->opp_window_size = tcp_hdr->th_win;
-                pkt_size = pkt_size - 20;
-                payload = payload + 20;
+                // pkt_size = pkt_size - 20;
+                // payload = payload + 20;
+                our_dprintf("acknowledge s\n");
             }
             // else if (tcp_hdr->th_flags & TH_FIN)
             // {

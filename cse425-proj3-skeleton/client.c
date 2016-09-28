@@ -167,7 +167,7 @@ loop_until_end(int sd)
             errcnd = 1;
             break;
         }
-        printf("mywrite stuck\n");
+        // printf("mywrite stuck\n");
 
         if (get_nvt_line(sd, line) < 0)
         {
