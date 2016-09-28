@@ -209,6 +209,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             our_dprintf("APP_DATA\n");
             int current_sender_window = SENDER_WINDOW - (ctx->current_sequence_num - ctx->ack_num);
             payload_size = stcp_app_recv(sd, payload, current_sender_window);
+            our_dprintf("payload_size: %d\n",payload_size);
             while (payload_size > 0)
             {
                 bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
@@ -218,7 +219,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 if(payload_size > STCP_MSS)
                 {
                     pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), payload, STCP_MSS, NULL);
-                    pkt_size = pkt_size - 20;
+                    pkt_size = STCP_MSS;
                     ctx->current_sequence_num = ctx->current_sequence_num + STCP_MSS;
                 }
                 else
@@ -230,6 +231,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 payload = payload + pkt_size;
                 payload_size = payload_size - pkt_size;
             }
+            our_dprintf("Datasent \n");
         } 
         if (event & NETWORK_DATA)
         {
