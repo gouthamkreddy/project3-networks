@@ -192,19 +192,20 @@ static void control_loop(mysocket_t sd, context_t *ctx)
     char* payload;
     char* payload1;
     tcp_hdr = (tcphdr *) calloc(1, sizeof(tcphdr));
-    payload = (char *) calloc(1, SENDER_WINDOW);
+    
     int payload_size, pkt_size;
 
     while (!ctx->done)
     {
         unsigned int event;
-        
+        payload = (char *) calloc(1, SENDER_WINDOW);
+        payload1 = (char *) calloc(1, STCP_MSS+20);
         /* see stcp_api.h or stcp_api.c for details of this function */
         /* XXX: you will need to change some of these arguments! */
         event = stcp_wait_for_event(sd, ANY_EVENT, NULL);
         our_dprintf("event occured %d\n", event);
-        bzero((char *)payload, STCP_MSS);
-        bzero((char *)payload1, STCP_MSS);
+        bzero((char *)payload, SENDER_WINDOW);
+        bzero((char *)payload1, STCP_MSS+20);
         int current_sender_window = SENDER_WINDOW - (ctx->current_sequence_num - ctx->ack_num);
         /* check whether it was the network, app, or a close request */
         if ((event & APP_DATA) && (current_sender_window > 0))
