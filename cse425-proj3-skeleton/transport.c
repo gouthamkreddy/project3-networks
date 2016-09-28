@@ -201,7 +201,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         /* check whether it was the network, app, or a close request */
         if (event & APP_DATA)
         {
-            int current_sender_window = MIN(SENDER_WINDOW - (ctx->current_sequence_num - ctx->ack_num), ctx->opp_window_size);
+            int current_sender_window = SENDER_WINDOW - (ctx->current_sequence_num - ctx->ack_num);
             payload_size = stcp_app_recv(sd, payload, current_sender_window);
             while (payload_size > 0)
             {
@@ -225,7 +225,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 payload_size = payload_size - pkt_size;
             }
         } 
-        else if (event & NETWORK_DATA)
+        if (event & NETWORK_DATA)
         {
             pkt_size = stcp_network_recv(sd, payload, RECEIVER_WINDOW+100);
             while(pkt_size > 0)
@@ -249,6 +249,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                         pkt_size = pkt_size-20;
                         stcp_app_send(sd, payload, pkt_size);
                         pkt_size = 0;
+                        payload_size = pkt_size;
                     }
                     else
                     {
@@ -256,10 +257,11 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                         pkt_size = pkt_size-20;
                         stcp_app_send(sd, payload+20, STCP_MSS);
                         pkt_size = pkt_size - STCP_MSS;
+                        payload_size = STCP_MSS;
                     }
 
                     bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
-                    tcp_hdr->th_ack = ctx->opp_sequence_num + 1;
+                    tcp_hdr->th_ack = ctx->opp_sequence_num + 20 + payload_size;
                     tcp_hdr->th_off = 5;
                     tcp_hdr->th_flags |= TH_ACK;
                     tcp_hdr->th_win = RECEIVER_WINDOW;
@@ -267,7 +269,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 }
             }
         }
-        else if (event & APP_CLOSE_REQUESTED)
+        if (event & APP_CLOSE_REQUESTED)
         {
 
         }
