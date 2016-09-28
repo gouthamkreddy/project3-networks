@@ -209,7 +209,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             our_dprintf("APP_DATA\n");
             int current_sender_window = SENDER_WINDOW - (ctx->current_sequence_num - ctx->ack_num);
             payload_size = stcp_app_recv(sd, payload, current_sender_window);
-            our_dprintf("payload_size: %d\n",payload_size);
+            our_dprintf("payload_size: %d %d\n",payload_size,current_sender_window);
             while (payload_size > 0)
             {
                 bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
