@@ -144,11 +144,11 @@ void transport_init(mysocket_t sd, bool_t is_active)
         }
 
     }
-
+    our_dprintf("Unblocked Application\n");
 
     ctx->connection_state = CSTATE_ESTABLISHED;
     stcp_unblock_application(sd);
-    our_dprintf("Unblocked Application\n");
+    
     control_loop(sd, ctx);
 
     /* do any cleanup here */
@@ -193,10 +193,11 @@ static void control_loop(mysocket_t sd, context_t *ctx)
     while (!ctx->done)
     {
         unsigned int event;
-
+        our_dprintf("control_loop entered\n");
         /* see stcp_api.h or stcp_api.c for details of this function */
         /* XXX: you will need to change some of these arguments! */
         event = stcp_wait_for_event(sd, 0, NULL);
+        our_dprintf("event occured\n");
         bzero((char *)payload, STCP_MSS);
         /* check whether it was the network, app, or a close request */
         if (event & APP_DATA)
