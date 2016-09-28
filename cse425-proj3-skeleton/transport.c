@@ -190,6 +190,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
     assert(!ctx->done);
     tcphdr *tcp_hdr;
     char* payload;
+    char* payload1;
     tcp_hdr = (tcphdr *) calloc(1, sizeof(tcphdr));
     payload = (char *) calloc(1, SENDER_WINDOW);
     int payload_size, pkt_size;
@@ -203,6 +204,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         event = stcp_wait_for_event(sd, ANY_EVENT, NULL);
         our_dprintf("event occured %d\n", event);
         bzero((char *)payload, STCP_MSS);
+        bzero((char *)payload1, STCP_MSS);
         int current_sender_window = SENDER_WINDOW - (ctx->current_sequence_num - ctx->ack_num);
         /* check whether it was the network, app, or a close request */
         if ((event & APP_DATA) && (current_sender_window > 0))
@@ -241,10 +243,10 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         if (event & NETWORK_DATA)
         {
             our_dprintf("NETWORK_DATA\n");
-            pkt_size = stcp_network_recv(sd, payload, STCP_MSS+20);
+            pkt_size = stcp_network_recv(sd, payload1, STCP_MSS+20);
             our_dprintf("packet size: %d\n",pkt_size);
             bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
-            tcp_hdr = (tcphdr *)payload;
+            tcp_hdr = (tcphdr *)payload1;
             our_dprintf("flags %d\n", tcp_hdr->th_flags);
             if (tcp_hdr->th_flags & TH_ACK)
             {
@@ -264,9 +266,9 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 ctx->opp_window_size = tcp_hdr->th_win;
                 
                 
-                payload = payload+20;
+                payload1 = payload1+20;
                 payload_size = pkt_size-20;
-                stcp_app_send(sd, payload, payload_size);
+                stcp_app_send(sd, payload1, payload_size);
                 
 
                 bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
