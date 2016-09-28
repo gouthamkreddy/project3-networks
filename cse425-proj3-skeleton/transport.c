@@ -122,6 +122,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         {
             //error;
         }
+        our_dprintf("Received SYN Packet of size %d\n", recv_pkt_size);
 
         /*--- SYN-ACK Packet ---*/
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
@@ -133,6 +134,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         tcp_hdr->th_win = RECEIVER_WINDOW;
         ctx->current_sequence_num++;
         send_pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+        our_dprintf("Sent SYN-ACK Packet of size %d\n", send_pkt_size);
 
         /*--- Receive ACK Packet ---*/
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
@@ -142,6 +144,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
             ctx->opp_sequence_num = tcp_hdr->th_seq;
             ctx->opp_window_size = tcp_hdr->th_win;
         }
+        our_dprintf("Received ACK Packet of size %d\n", recv_pkt_size);
 
     }
     our_dprintf("Unblocked Application\n");
