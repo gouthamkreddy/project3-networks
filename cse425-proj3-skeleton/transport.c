@@ -185,6 +185,7 @@ static void generate_initial_seq_num(context_t *ctx)
  */
 static void control_loop(mysocket_t sd, context_t *ctx)
 {
+    our_dprintf("control_loop entered\n");
     assert(ctx);
     assert(!ctx->done);
     tcphdr *tcp_hdr;
@@ -196,7 +197,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
     while (!ctx->done)
     {
         unsigned int event;
-        our_dprintf("control_loop entered\n");
+        
         /* see stcp_api.h or stcp_api.c for details of this function */
         /* XXX: you will need to change some of these arguments! */
         event = stcp_wait_for_event(sd, 0, NULL);
@@ -243,6 +244,10 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 pkt_size = pkt_size - 20;
                 payload = payload + 20;
             }
+            // else if (tcp_hdr->th_flags & TH_FIN)
+            // {
+
+            // }
             else
             {
                 ctx->opp_sequence_num = tcp_hdr->th_seq;
@@ -264,6 +269,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         }
         if (event & APP_CLOSE_REQUESTED)
         {
+            // bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
 
         }
         else
