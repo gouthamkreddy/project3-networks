@@ -235,9 +235,10 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         {
             our_dprintf("NETWORK_DATA\n");
             pkt_size = stcp_network_recv(sd, payload, STCP_MSS+20);
+            our_dprintf("packet size: %d\n",pkt_size);
             bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
             tcp_hdr = (tcphdr *)payload;
-            our_dprintf("flags %d\n", tcp_hdr->th_flags)
+            our_dprintf("flags %d\n", tcp_hdr->th_flags);
             if (tcp_hdr->th_flags & TH_ACK)
             {
                 ctx->ack_num = tcp_hdr->th_ack;
@@ -254,12 +255,12 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             {
                 ctx->opp_sequence_num = tcp_hdr->th_seq;
                 ctx->opp_window_size = tcp_hdr->th_win;
-                if(pkt_size <= (STCP_MSS+20))
-                {
-                    payload = payload+20;
-                    payload_size = pkt_size-20;
-                    stcp_app_send(sd, payload, payload_size);
-                }
+                
+                
+                payload = payload+20;
+                payload_size = pkt_size-20;
+                stcp_app_send(sd, payload, payload_size);
+                
 
                 bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
                 tcp_hdr->th_ack = ctx->opp_sequence_num + payload_size;
