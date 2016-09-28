@@ -219,13 +219,17 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 if(payload_size > STCP_MSS)
                 {
                     pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), payload, STCP_MSS, NULL);
+                    
                     pkt_size = STCP_MSS;
+                    our_dprintf("pkt_size: %d\n",pkt_size);
                     ctx->current_sequence_num = ctx->current_sequence_num + STCP_MSS;
                 }
                 else
                 {
                     pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), payload, payload_size, NULL);
+                   
                     pkt_size = pkt_size - 20;
+                    our_dprintf("pkt_size: %d\n",pkt_size);
                     ctx->current_sequence_num = ctx->current_sequence_num + pkt_size;
                 }
                 payload = payload + pkt_size;
