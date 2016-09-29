@@ -320,7 +320,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         }
         if (event & APP_CLOSE_REQUESTED)
         {   
-            our_dprintf("event value\n");
+            our_dprintf("event value : %d\n", event);
             bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
             tcp_hdr->th_seq = ctx->current_sequence_num;
             tcp_hdr->th_off = 5;
