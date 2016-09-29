@@ -23,7 +23,7 @@
 #define RECEIVER_WINDOW 3072
 #define SENDER_WINDOW 3072
 
-enum { SYN-SENT, SYN-RECEIVED, CSTATE_ESTABLISHED, FIN_WAIT_1, FIN_WAIT_2, TIME-WAIT, CLOSE-WAIT, LAST-ACK, CLOSED };    /* you should have more states */
+enum { SYN_SENT, SYN_RECEIVED, CSTATE_ESTABLISHED, FIN_WAIT_1, FIN_WAIT_2, TIME_WAIT, CLOSE_WAIT, LAST_ACK, CLOSED };    /* you should have more states */
 
 /* LISTEN, 
   FIN-WAIT-1, FIN-WAIT-2,  CLOSING, 
@@ -99,7 +99,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         {
             errno = ECONNREFUSED;
         }
-        ctx->connection_state = SYN-SENT;
+        ctx->connection_state = SYN_SENT;
 
         /*--- ACK Packet ---*/
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
@@ -125,7 +125,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         {
             errno = ECONNREFUSED;
         }
-        ctx->connection_state = SYN-RECEIVED;
+        ctx->connection_state = SYN_RECEIVED;
 
         /*--- SYN-ACK Packet ---*/
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
@@ -282,7 +282,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
                 if (ctx->connection_state == CSTATE_ESTABLISHED)
                 {
-                    ctx->connection_state = CLOSE-WAIT;
+                    ctx->connection_state = CLOSE_WAIT;
                 }
                 else if (ctx->connection_state == FIN_WAIT_2)
                 {
@@ -326,7 +326,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             }
             else
             {
-                ctx->connection_state = LAST-ACK;
+                ctx->connection_state = LAST_ACK;
                 ctx->done = true;
             }
             
