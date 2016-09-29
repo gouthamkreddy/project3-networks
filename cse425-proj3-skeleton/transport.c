@@ -245,7 +245,11 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 
             bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
             tcp_hdr = (tcphdr *)payload1;
-            if (tcp_hdr->th_flags & TH_ACK)
+            if ((tcp_hdr->th_flags & TH_ACK) && (tcp_hdr->th_ack == ctx->fin_ack_sequence_num))
+            {
+                ctx->done = true;
+            }
+            else if (tcp_hdr->th_flags & TH_ACK)
             {
                 /*--- Setting Context ---*/
                 ctx->ack_num = tcp_hdr->th_ack;
@@ -264,7 +268,14 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     payload_size = pkt_size-20;
                     stcp_app_send(sd, payload1, payload_size);
                 }
-                
+
+                 /*--- Sending Ack Packet ---*/
+                bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
+                tcp_hdr->th_ack = ctx->opp_sequence_num + 1;
+                tcp_hdr->th_off = 5;
+                tcp_hdr->th_flags |= TH_ACK;
+                tcp_hdr->th_win = RECEIVER_WINDOW;
+                pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
             }
             else
             {
