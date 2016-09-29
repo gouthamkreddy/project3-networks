@@ -25,11 +25,6 @@
 
 enum { SYN_SENT, SYN_RECEIVED, CSTATE_ESTABLISHED, FIN_WAIT_1, FIN_WAIT_2, TIME_WAIT, CLOSE_WAIT, LAST_ACK, CLOSED };    /* you should have more states */
 
-/* LISTEN, 
-  FIN-WAIT-1, FIN-WAIT-2,  CLOSING, 
-   */
-
-
 /* this structure is global to a mysocket descriptor */
 typedef struct
 {
