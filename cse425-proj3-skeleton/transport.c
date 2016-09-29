@@ -35,9 +35,10 @@ typedef struct
     tcp_seq initial_sequence_num;
     tcp_seq opp_sequence_num;
     tcp_seq ack_num;
-    tcp_seq opp_ack_num;
     int opp_window_size;
     tcp_seq current_sequence_num;
+    bool_t fin_sent;
+    tcp_seq fin_ack_sequence_num;
 
     /* any other connection-wide global variables go here */
 } context_t;
@@ -256,8 +257,14 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 ctx->opp_sequence_num = tcp_hdr->th_seq;
                 ctx->opp_window_size = tcp_hdr->th_win;
 
-                //send ack
-                //send fin
+                /*--- Sending Payload to app layer if there is data ---*/
+                if (pkt_size > 20)
+                {
+                    payload1 = payload1+20;
+                    payload_size = pkt_size-20;
+                    stcp_app_send(sd, payload1, payload_size);
+                }
+                
             }
             else
             {
@@ -286,8 +293,10 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             tcp_hdr->th_off = 5;
             tcp_hdr->th_flags |= TH_FIN;
             tcp_hdr->th_win = RECEIVER_WINDOW;
-            ctx->opp_sequence_num++;
+            ctx->current_sequence_num++;
             pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+            ctx->fin_sent = true;
+            ctx->fin_ack_sequence_num = ctx->current_sequence_num;
         }
 
         /* etc. */
