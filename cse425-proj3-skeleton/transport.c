@@ -199,37 +199,9 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         event = stcp_wait_for_event(sd, ANY_EVENT, NULL);
         // our_dprintf("event occured %d\n", event);
         current_sender_window = SENDER_WINDOW - (ctx->current_sequence_num - ctx->ack_num);
-
+        our_dprintf("event: %d", event);
         /* check whether it was the network, app, or a close request */
-        if ((event & APP_DATA) && (current_sender_window > 0))
-        {
-            payload = (char *) calloc(1, SENDER_WINDOW);
-            bzero((char *)payload, SENDER_WINDOW);
-            
-            payload_size = stcp_app_recv(sd, payload, current_sender_window);
-            
-            while (payload_size > 0)
-            {
-                bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
-                tcp_hdr->th_seq = ctx->current_sequence_num;
-                tcp_hdr->th_off = 5;
-                tcp_hdr->th_win = RECEIVER_WINDOW;
-                if(payload_size > STCP_MSS)
-                {
-                    pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), payload, STCP_MSS, NULL);
-                    pkt_size = STCP_MSS;
-                }
-                else
-                {
-                    pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), payload, payload_size, NULL);
-                    pkt_size = pkt_size - sizeof(tcphdr);
-                }
-                ctx->current_sequence_num = ctx->current_sequence_num + pkt_size;
-                payload = payload + pkt_size;
-                payload_size = payload_size - pkt_size;
-            }
-        } 
-
+        
         if (event & NETWORK_DATA)
         {
             payload1 = (char *) calloc(1, STCP_MSS+20);
@@ -307,6 +279,35 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
             }
         }
+        if ((event & APP_DATA) && (current_sender_window > 0))
+        {
+            payload = (char *) calloc(1, SENDER_WINDOW);
+            bzero((char *)payload, SENDER_WINDOW);
+            
+            payload_size = stcp_app_recv(sd, payload, current_sender_window);
+            
+            while (payload_size > 0)
+            {
+                bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
+                tcp_hdr->th_seq = ctx->current_sequence_num;
+                tcp_hdr->th_off = 5;
+                tcp_hdr->th_win = RECEIVER_WINDOW;
+                if(payload_size > STCP_MSS)
+                {
+                    pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), payload, STCP_MSS, NULL);
+                    pkt_size = STCP_MSS;
+                }
+                else
+                {
+                    pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), payload, payload_size, NULL);
+                    pkt_size = pkt_size - sizeof(tcphdr);
+                }
+                ctx->current_sequence_num = ctx->current_sequence_num + pkt_size;
+                payload = payload + pkt_size;
+                payload_size = payload_size - pkt_size;
+            }
+        } 
+
         if (event & APP_CLOSE_REQUESTED)
         {   
             bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
