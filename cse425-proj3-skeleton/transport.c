@@ -185,35 +185,34 @@ static void generate_initial_seq_num(context_t *ctx)
  */
 static void control_loop(mysocket_t sd, context_t *ctx)
 {
-    our_dprintf("control_loop entered\n");
     assert(ctx);
     assert(!ctx->done);
     tcphdr *tcp_hdr;
     char* payload;
     char* payload1;
+    int payload_size, pkt_size;
+    int current_sender_window;
+    
     tcp_hdr = (tcphdr *) calloc(1, sizeof(tcphdr));
     
-    int payload_size, pkt_size;
-
     while (!ctx->done)
     {
         unsigned int event;
-        payload = (char *) calloc(1, SENDER_WINDOW);
-        payload1 = (char *) calloc(1, STCP_MSS+20);
+       
         /* see stcp_api.h or stcp_api.c for details of this function */
         /* XXX: you will need to change some of these arguments! */
         event = stcp_wait_for_event(sd, ANY_EVENT, NULL);
-        our_dprintf("event occured %d\n", event);
-        bzero((char *)payload, SENDER_WINDOW);
-        bzero((char *)payload1, STCP_MSS+20);
-        int current_sender_window = SENDER_WINDOW - (ctx->current_sequence_num - ctx->ack_num);
+        // our_dprintf("event occured %d\n", event);
+        current_sender_window = SENDER_WINDOW - (ctx->current_sequence_num - ctx->ack_num);
+
         /* check whether it was the network, app, or a close request */
         if ((event & APP_DATA) && (current_sender_window > 0))
         {
-            our_dprintf("APP_DATA\n");
+            payload = (char *) calloc(1, SENDER_WINDOW);
+            bzero((char *)payload, SENDER_WINDOW);
             
             payload_size = stcp_app_recv(sd, payload, current_sender_window);
-            our_dprintf("payload_size: %d %d\n",payload_size,current_sender_window);
+            
             while (payload_size > 0)
             {
                 bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
@@ -223,72 +222,72 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 if(payload_size > STCP_MSS)
                 {
                     pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), payload, STCP_MSS, NULL);
-                    
                     pkt_size = STCP_MSS;
-                    our_dprintf("pkt_size: %d\n",pkt_size);
-                    ctx->current_sequence_num = ctx->current_sequence_num + STCP_MSS;
                 }
                 else
                 {
                     pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), payload, payload_size, NULL);
-                   
-                    pkt_size = pkt_size - 20;
-                    our_dprintf("pkt_size: %d\n",pkt_size);
-                    ctx->current_sequence_num = ctx->current_sequence_num + pkt_size;
+                    pkt_size = pkt_size - sizeof(tcphdr);
                 }
+                ctx->current_sequence_num = ctx->current_sequence_num + pkt_size;
                 payload = payload + pkt_size;
                 payload_size = payload_size - pkt_size;
             }
-            our_dprintf("Datasent \n");
         } 
+
         if (event & NETWORK_DATA)
         {
-            our_dprintf("NETWORK_DATA\n");
+            payload1 = (char *) calloc(1, STCP_MSS+20);
+            bzero((char *)payload1, STCP_MSS+20);
+
             pkt_size = stcp_network_recv(sd, payload1, STCP_MSS+20);
-            our_dprintf("packet size: %d\n",pkt_size);
+
             bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
             tcp_hdr = (tcphdr *)payload1;
-            our_dprintf("flags %d\n", tcp_hdr->th_flags);
             if (tcp_hdr->th_flags & TH_ACK)
             {
+                /*--- Setting Context ---*/
                 ctx->ack_num = tcp_hdr->th_ack;
                 ctx->opp_window_size = tcp_hdr->th_win;
-                // pkt_size = pkt_size - 20;
-                // payload = payload + 20;
-                our_dprintf("acknowledge s\n");
             }
-            // else if (tcp_hdr->th_flags & TH_FIN)
-            // {
+            else if (tcp_hdr->th_flags & TH_FIN)
+            {
+                /*--- Setting Context ---*/
+                ctx->opp_sequence_num = tcp_hdr->th_seq;
+                ctx->opp_window_size = tcp_hdr->th_win;
 
-            // }
+                //send ack
+                //send fin
+            }
             else
             {
+                /*--- Setting Context ---*/
                 ctx->opp_sequence_num = tcp_hdr->th_seq;
                 ctx->opp_window_size = tcp_hdr->th_win;
                 
-                
+                /*--- Sending Payload to app layer ---*/
                 payload1 = payload1+20;
                 payload_size = pkt_size-20;
                 stcp_app_send(sd, payload1, payload_size);
-                
 
+                /*--- Sending Ack Packet ---*/
                 bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
                 tcp_hdr->th_ack = ctx->opp_sequence_num + payload_size;
                 tcp_hdr->th_off = 5;
                 tcp_hdr->th_flags |= TH_ACK;
                 tcp_hdr->th_win = RECEIVER_WINDOW;
                 pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
-                our_dprintf("ack packet size: %d\n",pkt_size);
             }
         }
         if (event & APP_CLOSE_REQUESTED)
         {
-            // bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
-
-        }
-        else
-        {
-            // timeout;
+            bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
+            tcp_hdr->th_seq = ctx->current_sequence_num;
+            tcp_hdr->th_off = 5;
+            tcp_hdr->th_flags |= TH_FIN;
+            tcp_hdr->th_win = RECEIVER_WINDOW;
+            ctx->opp_sequence_num++;
+            pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
         }
 
         /* etc. */
