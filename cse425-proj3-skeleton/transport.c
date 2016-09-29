@@ -20,9 +20,10 @@
 #include "stcp_api.h"
 #include "transport.h"
 
-// Page 20 of RFC
-enum { CSTATE_ESTABLISHED, FIN_RCVD, FIN_SENT, CLOSE};    /* you should have more states */
+#define RECEIVER_WINDOW 3072
+#define SENDER_WINDOW 3072
 
+enum { SYN_SENT, SYN_RECEIVED, CSTATE_ESTABLISHED, FIN_WAIT_1, FIN_WAIT_2, TIME_WAIT, CLOSE_WAIT, LAST_ACK, CLOSED };    /* you should have more states */
 
 /* this structure is global to a mysocket descriptor */
 typedef struct
@@ -31,17 +32,19 @@ typedef struct
 
     int connection_state;   /* state of the connection (established, etc.) */
     tcp_seq initial_sequence_num;
+    tcp_seq opp_sequence_num;
+    tcp_seq ack_num;
+    int opp_window_size;
+    tcp_seq current_sequence_num;
+    tcp_seq fin_ack_sequence_num;
 
-	tcp_seq current_ack; 
-	tcp_seq last_acked;
-	tcp_seq fin_seq;
     /* any other connection-wide global variables go here */
 } context_t;
 
 
 static void generate_initial_seq_num(context_t *ctx);
 static void control_loop(mysocket_t sd, context_t *ctx);
-
+void our_dprintf(const char *format,...);
 
 /* initialise the transport layer, and start the main loop, handling
  * any data from the peer or the application.  this function should not
@@ -50,12 +53,17 @@ static void control_loop(mysocket_t sd, context_t *ctx);
 void transport_init(mysocket_t sd, bool_t is_active)
 {
     context_t *ctx;
+    tcphdr *tcp_hdr;
+    int send_pkt_size, recv_pkt_size;
 
     ctx = (context_t *) calloc(1, sizeof(context_t));
+    tcp_hdr = (tcphdr *) calloc(1, sizeof(tcphdr));
+    
     assert(ctx);
+    assert(tcp_hdr);
 
     generate_initial_seq_num(ctx);
-	ctx->fin_seq = 0;
+
     /* XXX: you should send a SYN packet here if is_active, or wait for one
      * to arrive if !is_active.  after the handshake completes, unblock the
      * application with stcp_unblock_application(sd).  you may also use
@@ -64,71 +72,81 @@ void transport_init(mysocket_t sd, bool_t is_active)
      * ECONNREFUSED, etc.) before calling the function.
      */
 
-	if(is_active) {
-		//send SYN packet
-		tcphdr* syn1 = (tcphdr*)malloc(sizeof(tcphdr));
-		syn1->th_seq = ctx->initial_sequence_num++;
-		syn1->th_ack = 0;
-		syn1->th_off = 5;
-		syn1->th_flags = TH_SYN;
-		syn1->th_win = 3072;
-		int err = stcp_network_send(sd, syn1, sizeof(tcphdr), NULL);
-		if(err==-1){
-			errno = ECONNREFUSED;
-			printf("nw send error-1");}
-		tcphdr *syn_ack = (tcphdr*)malloc(sizeof(tcphdr));
-		int len = stcp_network_recv(sd, syn_ack, sizeof(tcphdr));
-		if(len==-1 || syn_ack->th_flags!=(TH_SYN|TH_ACK) || syn_ack->th_ack!=ctx->initial_sequence_num) {
-			errno = ECONNREFUSED;
-			printf("nw rcv error-1");
-		}
-		
-		tcphdr* ack = (tcphdr*)malloc(sizeof(tcphdr));
-		ack->th_seq = ctx->initial_sequence_num++;
-		ack->th_ack = syn_ack->th_seq+1;
-		ack->th_off = 5;
-		ack->th_flags = TH_ACK;
-		ack->th_win = 3072;
-		err= stcp_network_send(sd, ack, sizeof(tcphdr), NULL);
-		if(err==-1) {
-			errno = ECONNREFUSED;
-			printf("nw send error-2");}	
-		ctx->current_ack = ack->th_ack;
-		ctx->last_acked = syn_ack->th_ack;
-	
-	}
-	else {
-		tcphdr *recv_syn = (tcphdr*)malloc(sizeof(tcphdr));
-		tcphdr* recv_ack = (tcphdr*)malloc(sizeof(tcphdr));
-		int len1, len2;
-		len1 = stcp_network_recv(sd, recv_syn, sizeof(tcphdr));
-		if(len1==-1 || recv_syn->th_flags!=TH_SYN) {
-			errno = ECONNREFUSED;
-			printf("nw rcv error-2");
-		}
-		tcphdr* syn2 = (tcphdr*)malloc(sizeof(tcphdr));
-		syn2->th_seq = ctx->initial_sequence_num++;
-		syn2->th_ack = recv_syn->th_seq+1;
-		syn2->th_off = 5;
-		syn2->th_flags = TH_SYN | TH_ACK;
-		syn2->th_win = 3072;
-		int err = stcp_network_send(sd, syn2, sizeof(tcphdr), NULL);
-		if(err==-1) {
-			errno = ECONNREFUSED;
-			printf("nw send error-3");}
-	
-		len2 = stcp_network_recv(sd, recv_ack, sizeof(tcphdr));
-		if(len2==-1 || recv_ack->th_flags!=TH_ACK || recv_ack->th_seq!=syn2->th_ack || recv_ack->th_ack!=ctx->initial_sequence_num) {
-			errno = ECONNREFUSED;
-			printf("nw rcv error-3");
-		}
-		ctx->last_acked = recv_ack->th_ack;
-		ctx->current_ack = syn2->th_ack;
-	}
+    if(is_active)
+    {
+        /*--- SYN Packet ---*/
+        tcp_hdr->th_seq = ctx->initial_sequence_num;
+        tcp_hdr->th_off = 5;
+        tcp_hdr->th_flags |= TH_SYN;
+        tcp_hdr->th_win = RECEIVER_WINDOW;
+        ctx->current_sequence_num++;
+        send_pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+
+        /*--- Receive SYN-ACK Packet ---*/
+        bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
+        recv_pkt_size = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
+        if ((tcp_hdr->th_flags & TH_ACK) && (tcp_hdr->th_flags & TH_SYN) && (tcp_hdr->th_ack == ctx->current_sequence_num))
+        {
+            ctx->opp_sequence_num = tcp_hdr->th_seq;
+            ctx->opp_window_size = tcp_hdr->th_win;
+        }
+        else
+        {
+            errno = ECONNREFUSED;
+        }
+        ctx->connection_state = SYN_SENT;
+
+        /*--- ACK Packet ---*/
+        bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
+        tcp_hdr->th_seq = ctx->current_sequence_num;
+        tcp_hdr->th_ack = ctx->opp_sequence_num + 1;
+        tcp_hdr->th_off = 5;
+        tcp_hdr->th_flags |= TH_ACK;
+        tcp_hdr->th_win = RECEIVER_WINDOW;
+        ctx->current_sequence_num++;
+        send_pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+
+    }
+    else
+    {
+        /*--- Receive SYN Packet ---*/
+        recv_pkt_size = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
+        if (tcp_hdr->th_flags & TH_SYN)
+        {
+            ctx->opp_sequence_num = tcp_hdr->th_seq;
+            ctx->opp_window_size = tcp_hdr->th_win;
+        }
+        else
+        {
+            errno = ECONNREFUSED;
+        }
+        ctx->connection_state = SYN_RECEIVED;
+
+        /*--- SYN-ACK Packet ---*/
+        bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
+        tcp_hdr->th_seq = ctx->current_sequence_num;
+        tcp_hdr->th_ack = ctx->opp_sequence_num + 1;
+        tcp_hdr->th_off = 5;
+        tcp_hdr->th_flags |= TH_SYN;
+        tcp_hdr->th_flags |= TH_ACK;
+        tcp_hdr->th_win = RECEIVER_WINDOW;
+        ctx->current_sequence_num++;
+        send_pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+
+        /*--- Receive ACK Packet ---*/
+        bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
+        recv_pkt_size = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
+        if ((tcp_hdr->th_flags & TH_ACK) && (tcp_hdr->th_ack == ctx->current_sequence_num))
+        {
+            ctx->opp_sequence_num = tcp_hdr->th_seq;
+            ctx->opp_window_size = tcp_hdr->th_win;
+        }
+
+    }
 
     ctx->connection_state = CSTATE_ESTABLISHED;
     stcp_unblock_application(sd);
-
+    
     control_loop(sd, ctx);
 
     /* do any cleanup here */
@@ -146,7 +164,9 @@ static void generate_initial_seq_num(context_t *ctx)
     ctx->initial_sequence_num = 1;
 #else
     /* you have to fill this up */
-    ctx->initial_sequence_num = rand()%256;
+    int r = rand() % 256;
+    ctx->initial_sequence_num = r;
+    ctx->current_sequence_num = ctx->initial_sequence_num;
 #endif
 }
 
@@ -162,139 +182,155 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 {
     assert(ctx);
     assert(!ctx->done);
-
+    tcphdr *tcp_hdr;
+    char* payload;
+    char* payload1;
+    int payload_size, pkt_size;
+    int current_sender_window;
+    
+    tcp_hdr = (tcphdr *) calloc(1, sizeof(tcphdr));
+    
     while (!ctx->done)
     {
         unsigned int event;
-	
+       
         /* see stcp_api.h or stcp_api.c for details of this function */
         /* XXX: you will need to change some of these arguments! */
-        event = stcp_wait_for_event(sd, 1|2|4, NULL);
-	printf("event: %d\n", event);
+        event = stcp_wait_for_event(sd, ANY_EVENT, NULL);
+        // our_dprintf("event occured %d\n", event);
+        current_sender_window = SENDER_WINDOW - (ctx->current_sequence_num - ctx->ack_num);
+        our_dprintf("event: %d", event);
         /* check whether it was the network, app, or a close request */
-        if (event & APP_DATA)
+        
+        if (event & NETWORK_DATA)
         {
-            /* the application has requested that data be sent */
-            /* see stcp_app_recv() */
-		int len_appdata, len_network;
-		int sender_win = 3072-(ctx->initial_sequence_num - ctx->last_acked);
-		//printf("sender wind: %d\n", sender_win);
-		//printf("new seq no: %d\n", ctx->initial_sequence_num);
-		//printf("last acked: %d\n", ctx->last_acked);
-		char* recv_appdata = (char*)malloc(sender_win*sizeof(char));
-		len_appdata = stcp_app_recv(sd, recv_appdata, sender_win);
-		printf("len appdata: %d\n", len_appdata);
-		
-		if(sender_win > 0) {
-			while(len_appdata!=0) {
-				tcphdr* data = (tcphdr*)malloc(sizeof(tcphdr));
-				data->th_seq = ctx->initial_sequence_num;
-				if(len_appdata>536) {
-					len_network = 536;
-					len_appdata = len_appdata-536;
-				}	
-				else {
-					len_network = len_appdata;
-					len_appdata = 0;
-				}
-				ctx->initial_sequence_num += len_network;
-				data->th_ack = ctx->current_ack;
-				data->th_off = 5;
-				data->th_flags = TH_ACK;
-				data->th_win = 3072;
-				char send_network[538];
-				strncpy(send_network, recv_appdata, len_network);
-				recv_appdata = recv_appdata + len_network;
-				int err = stcp_network_send(sd, data, sizeof(tcphdr), send_network , len_network, NULL);
-				if(err==-1)
-					printf("Cannot send data to network layer");
-			}
-		}
+            payload1 = (char *) calloc(1, STCP_MSS+20);
+            bzero((char *)payload1, STCP_MSS+20);
+
+            pkt_size = stcp_network_recv(sd, payload1, STCP_MSS+20);
+
+            bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
+            tcp_hdr = (tcphdr *)payload1;
+            
+            if (tcp_hdr->th_flags & TH_ACK)
+            {
+                /*--- Setting Context ---*/
+                ctx->ack_num = tcp_hdr->th_ack;
+                ctx->opp_window_size = tcp_hdr->th_win;
+
+                if (tcp_hdr->th_ack == ctx->fin_ack_sequence_num)
+                {
+                    if (ctx->connection_state == FIN_WAIT_1)
+                    {
+                        ctx->connection_state = FIN_WAIT_2;
+                    }
+                }
+            }
+            else if (tcp_hdr->th_flags & TH_FIN)
+            {
+                stcp_fin_received(sd);
+                /*--- Setting Context ---*/
+                ctx->opp_sequence_num = tcp_hdr->th_seq;
+                ctx->opp_window_size = tcp_hdr->th_win;
+
+                /*--- Sending Payload to app layer if there is data ---*/
+                if (pkt_size > 20)
+                {
+                    payload1 = payload1+20;
+                    payload_size = pkt_size-20;
+                    stcp_app_send(sd, payload1, payload_size);
+                }
+
+                /*--- Sending Ack Packet ---*/
+                bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
+                tcp_hdr->th_ack = ctx->opp_sequence_num + 1;
+                tcp_hdr->th_off = 5;
+                tcp_hdr->th_flags |= TH_ACK;
+                tcp_hdr->th_win = RECEIVER_WINDOW;
+                pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+                if (ctx->connection_state == CSTATE_ESTABLISHED)
+                {
+                    ctx->connection_state = CLOSE_WAIT;
+                }
+                else if (ctx->connection_state == FIN_WAIT_2)
+                {
+                    ctx->connection_state = CLOSED;
+                    ctx->done = true;
+                }
+                
+            }
+            else
+            {
+                /*--- Setting Context ---*/
+                ctx->opp_sequence_num = tcp_hdr->th_seq;
+                ctx->opp_window_size = tcp_hdr->th_win;
+                
+                /*--- Sending Payload to app layer ---*/
+                payload1 = payload1+20;
+                payload_size = pkt_size-20;
+                stcp_app_send(sd, payload1, payload_size);
+
+                /*--- Sending Ack Packet ---*/
+                bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
+                tcp_hdr->th_ack = ctx->opp_sequence_num + payload_size;
+                tcp_hdr->th_off = 5;
+                tcp_hdr->th_flags |= TH_ACK;
+                tcp_hdr->th_win = RECEIVER_WINDOW;
+                pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+            }
         }
-	if(event & NETWORK_DATA) {
-		char *net_data = (char*)malloc(sizeof(tcphdr) + 536*sizeof(char));
-		tcphdr* hdr = (tcphdr*)malloc(sizeof(tcphdr));	
-		int len_net, len_data, bytes_to_buffer;
-		len_net = stcp_network_recv(sd, net_data, sizeof(tcphdr)+536);
-		
-		hdr = (tcphdr*) net_data;
-		char *data = (char*)malloc(538*sizeof(char));
-		len_data = len_net-sizeof(tcphdr);               ////does it ensure 0<=len_data<=536 ??
-		if(len_data==-20) {
-			ctx->connection_state=CLOSE;
-		}		
-		printf("len data: %d\n", len_data);
-		printf("current ack: %d\n", ctx->current_ack);
-		if(len_data>0) {
-		//send data to app
-			data = net_data+hdr->th_off*sizeof(uint32_t);
-			/*if((net_data->th_seq>=ctx->current_ack && net_data->th_seq<=ctx->current_ack+3072-1) {
-				bytes_to_buffer = MIN(ctx->current_ack+3072-net_data->th_seq,len_data);
-				if(net_data->th_seq==ctx->current_ack)
-					ctx->current_ack += len_data;		
-			else if ( net_data->th_seq<=ctx->current_ack && net_data->th_seq + len_data-1 >= ctx->current_ack)) {
-				bytes_to_buffer = net_data->th_seq - ctx->current_ack+len_data;
-				data = data + ctx->current_ack-net_data->th_seq;
-				ctx->current_ack = 
-			}*/
-			ctx->current_ack += len_data;
-			stcp_app_send(sd, data, len_data);
-			tcphdr* data_ack = (tcphdr*)malloc(sizeof(tcphdr));          //do we need to send ack to network here??
-			data_ack->th_seq = ctx->initial_sequence_num++;
-			data_ack->th_ack = ctx->current_ack;
-			data_ack->th_off = 5;
-			data_ack->th_flags = TH_ACK;
-			data_ack->th_win = 3072;
-			stcp_network_send(sd, data_ack, sizeof(tcphdr), NULL);
-		}
-		if(hdr->th_flags==TH_ACK) {
-			if(len_data==0)
-				ctx->current_ack ++;
-			ctx->last_acked = hdr->th_ack;
-			printf("inside ack.....hdr seq: %d, hdr acked:%d\n", hdr->th_seq, hdr->th_ack);
-			
-			if(hdr->th_ack==ctx->fin_seq) {
-				if(ctx->connection_state == FIN_RCVD)
-					ctx->connection_state = CLOSE;
-				else
-					ctx->connection_state = FIN_SENT;
-			}
-		}
-		if(hdr->th_flags==TH_FIN) {                            //what if it also contains ack flag??
-			stcp_fin_received(sd);	
-			if(len_data==0)
-				ctx->current_ack ++;	
-			if(ctx->connection_state == FIN_SENT)
-				ctx->connection_state = CLOSE;
-			else 
-				ctx->connection_state = FIN_RCVD;
-			tcphdr* fin_ack = (tcphdr*)malloc(sizeof(tcphdr));          //do we need to send ack to network here??
-			fin_ack->th_seq = ctx->initial_sequence_num++;
-			fin_ack->th_ack = ctx->current_ack;
-			fin_ack->th_off = 5;
-			fin_ack->th_flags = TH_ACK;
-			fin_ack->th_win = 3072;
-			stcp_network_send(sd, fin_ack, sizeof(tcphdr), NULL);
-				
-		}
-		
-		printf("connection_state: %d\n", ctx->connection_state);
-	}
-	if(event & APP_CLOSE_REQUESTED) {
-		tcphdr* fin = (tcphdr*)malloc(sizeof(tcphdr));          //do we need to send ack to network here??
-		fin->th_seq = ctx->initial_sequence_num++;
-		fin->th_ack = ctx->current_ack;
-		fin->th_off = 5;
-		fin->th_flags = TH_FIN;
-		fin->th_win = 3072;
-		ctx->fin_seq = fin->th_seq;
-		printf("fin seq: %d\n", ctx->fin_seq);
-		stcp_network_send(sd, fin, sizeof(tcphdr), NULL);
-	}
+        if ((event & APP_DATA) && (current_sender_window > 0))
+        {
+            payload = (char *) calloc(1, SENDER_WINDOW);
+            bzero((char *)payload, SENDER_WINDOW);
+            
+            payload_size = stcp_app_recv(sd, payload, current_sender_window);
+            
+            while (payload_size > 0)
+            {
+                bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
+                tcp_hdr->th_seq = ctx->current_sequence_num;
+                tcp_hdr->th_off = 5;
+                tcp_hdr->th_win = RECEIVER_WINDOW;
+                if(payload_size > STCP_MSS)
+                {
+                    pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), payload, STCP_MSS, NULL);
+                    pkt_size = STCP_MSS;
+                }
+                else
+                {
+                    pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), payload, payload_size, NULL);
+                    pkt_size = pkt_size - sizeof(tcphdr);
+                }
+                ctx->current_sequence_num = ctx->current_sequence_num + pkt_size;
+                payload = payload + pkt_size;
+                payload_size = payload_size - pkt_size;
+            }
+        } 
+
+        if (event & APP_CLOSE_REQUESTED)
+        {   
+            bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
+            tcp_hdr->th_seq = ctx->current_sequence_num;
+            tcp_hdr->th_off = 5;
+            tcp_hdr->th_flags |= TH_FIN;
+            tcp_hdr->th_win = RECEIVER_WINDOW;
+            ctx->current_sequence_num++;
+            pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+            if (ctx->connection_state == CSTATE_ESTABLISHED)
+            {
+                ctx->connection_state = FIN_WAIT_1;
+            }
+            else
+            {
+                ctx->connection_state = LAST_ACK;
+                ctx->done = true;
+                ctx->connection_state = CLOSED;
+            }
+            ctx->fin_ack_sequence_num = ctx->current_sequence_num;
+        }
 
         /* etc. */
-	if(ctx->connection_state == CLOSE)
-		ctx->done = 1;
     }
 }
 
