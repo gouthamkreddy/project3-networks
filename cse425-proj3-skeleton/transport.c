@@ -23,7 +23,11 @@
 #define RECEIVER_WINDOW 3072
 #define SENDER_WINDOW 3072
 
-enum { CSTATE_ESTABLISHED };    /* you should have more states */
+enum { SYN-SENT, SYN-RECEIVED, CSTATE_ESTABLISHED, FIN_WAIT_1, FIN_WAIT_2, TIME-WAIT, CLOSE-WAIT, LAST-ACK, CLOSED };    /* you should have more states */
+
+/* LISTEN, 
+  FIN-WAIT-1, FIN-WAIT-2,  CLOSING, 
+   */
 
 
 /* this structure is global to a mysocket descriptor */
@@ -37,7 +41,6 @@ typedef struct
     tcp_seq ack_num;
     int opp_window_size;
     tcp_seq current_sequence_num;
-    bool_t fin_sent;
     tcp_seq fin_ack_sequence_num;
 
     /* any other connection-wide global variables go here */
@@ -94,8 +97,9 @@ void transport_init(mysocket_t sd, bool_t is_active)
         }
         else
         {
-            //error;
+            errno = ECONNREFUSED;
         }
+        ctx->connection_state = SYN-SENT;
 
         /*--- ACK Packet ---*/
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
@@ -119,8 +123,9 @@ void transport_init(mysocket_t sd, bool_t is_active)
         }
         else
         {
-            //error;
+            errno = ECONNREFUSED;
         }
+        ctx->connection_state = SYN-RECEIVED;
 
         /*--- SYN-ACK Packet ---*/
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
@@ -239,15 +244,20 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 
             bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
             tcp_hdr = (tcphdr *)payload1;
-            if ((tcp_hdr->th_flags & TH_ACK) && (tcp_hdr->th_ack == ctx->fin_ack_sequence_num))
-            {
-                ctx->done = true;
-            }
-            else if (tcp_hdr->th_flags & TH_ACK)
+            
+            if (tcp_hdr->th_flags & TH_ACK)
             {
                 /*--- Setting Context ---*/
                 ctx->ack_num = tcp_hdr->th_ack;
                 ctx->opp_window_size = tcp_hdr->th_win;
+
+                if (tcp_hdr->th_ack == ctx->fin_ack_sequence_num)
+                {
+                    if (ctx->connection_state == FIN_WAIT_1)
+                    {
+                        ctx->connection_state = FIN_WAIT_2;
+                    }
+                }
             }
             else if (tcp_hdr->th_flags & TH_FIN)
             {
@@ -270,6 +280,16 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 tcp_hdr->th_flags |= TH_ACK;
                 tcp_hdr->th_win = RECEIVER_WINDOW;
                 pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+                if (ctx->connection_state == CSTATE_ESTABLISHED)
+                {
+                    ctx->connection_state = CLOSE-WAIT;
+                }
+                else if (ctx->connection_state == FIN_WAIT_2)
+                {
+                    ctx->connection_state = CLOSED;
+                    ctx->done = true;
+                }
+                
             }
             else
             {
@@ -300,7 +320,16 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             tcp_hdr->th_win = RECEIVER_WINDOW;
             ctx->current_sequence_num++;
             pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
-            ctx->fin_sent = true;
+            if (ctx->connection_state == CSTATE_ESTABLISHED)
+            {
+                ctx->connection_state = FIN_WAIT_1;
+            }
+            else
+            {
+                ctx->connection_state = LAST-ACK;
+                ctx->done = true;
+            }
+            
             ctx->fin_ack_sequence_num = ctx->current_sequence_num;
         }
 
