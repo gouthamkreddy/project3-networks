@@ -256,7 +256,12 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     if (ctx->connection_state == FIN_WAIT_1)
                     {
                         ctx->connection_state = FIN_WAIT_2;
+                        our_dprintf("fin wait 2");
                     }
+                    // else if (ctx->connection_state == CLOSE_WAIT)
+                    // {
+
+                    // }
                 }
             }
             else if (tcp_hdr->th_flags & TH_FIN)
@@ -283,11 +288,13 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 if (ctx->connection_state == CSTATE_ESTABLISHED)
                 {
                     ctx->connection_state = CLOSE_WAIT;
+                    our_dprintf("close wait");
                 }
                 else if (ctx->connection_state == FIN_WAIT_2)
                 {
                     ctx->connection_state = CLOSED;
                     ctx->done = true;
+                    our_dprintf("closed");
                 }
                 
             }
@@ -324,13 +331,13 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             {
                 ctx->connection_state = FIN_WAIT_1;
                 our_dprintf("fin wait 1");
-
             }
             else
             {
                 ctx->connection_state = LAST_ACK;
                 ctx->done = true;
-                our_dprintf("last-ack");
+                ctx->connection_state = CLOSED;
+                our_dprintf("last-ack closed");
             }
             ctx->fin_ack_sequence_num = ctx->current_sequence_num;
         }
