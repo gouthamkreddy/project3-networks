@@ -323,13 +323,15 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             if (ctx->connection_state == CSTATE_ESTABLISHED)
             {
                 ctx->connection_state = FIN_WAIT_1;
+                our_dprintf("fin wait 1");
+
             }
             else
             {
                 ctx->connection_state = LAST_ACK;
                 ctx->done = true;
+                our_dprintf("last-ack");
             }
-            
             ctx->fin_ack_sequence_num = ctx->current_sequence_num;
         }
 
