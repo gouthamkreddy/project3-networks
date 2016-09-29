@@ -258,14 +258,11 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                         ctx->connection_state = FIN_WAIT_2;
                         our_dprintf("fin wait 2");
                     }
-                    // else if (ctx->connection_state == CLOSE_WAIT)
-                    // {
-
-                    // }
                 }
             }
             else if (tcp_hdr->th_flags & TH_FIN)
             {
+                stcp_fin_received(sd);
                 /*--- Setting Context ---*/
                 ctx->opp_sequence_num = tcp_hdr->th_seq;
                 ctx->opp_window_size = tcp_hdr->th_win;
@@ -278,7 +275,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     stcp_app_send(sd, payload1, payload_size);
                 }
 
-                 /*--- Sending Ack Packet ---*/
+                /*--- Sending Ack Packet ---*/
                 bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
                 tcp_hdr->th_ack = ctx->opp_sequence_num + 1;
                 tcp_hdr->th_off = 5;
