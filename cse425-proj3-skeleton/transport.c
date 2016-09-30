@@ -93,7 +93,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
                 
             ctx->opp_sequence_num = ntohl(tcp_hdr->th_seq);
             // ctx->opp_window_size = ntohs(tcp_hdr->th_win);
-            our_dprintf("seq_no: %d   %d\n", ctx->opp_sequence_num, ctx->opp_window_size);
+            our_dprintf("seq_no: %d   \n", ctx->opp_sequence_num);
         }
         else
         {
@@ -276,7 +276,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 our_dprintf("seq_no: %d   %d\n", tcp_hdr->th_seq, tcp_hdr->th_win);
                 ctx->opp_sequence_num = ntohl(tcp_hdr->th_seq);
                 // ctx->opp_window_size = ntohs(tcp_hdr->th_win);
-                our_dprintf("seq_no: %d   %d\n", ctx->opp_sequence_num, ctx->opp_window_size);
+                our_dprintf("seq_no: %d   \n", ctx->opp_sequence_num);
                 /*--- Sending Payload to app layer ---*/
                 payload1 = payload1+20;
                 payload_size = pkt_size-20;
