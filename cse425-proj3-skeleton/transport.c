@@ -86,7 +86,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         /*--- Receive SYN-ACK Packet ---*/
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
         recv_pkt_size = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
-        if ((tcp_hdr->th_flags & TH_ACK) && (tcp_hdr->th_flags & TH_SYN) && (tcp_hdr->th_ack == ctx->current_sequence_num))
+        if ((tcp_hdr->th_flags & TH_ACK) && (tcp_hdr->th_flags & TH_SYN) && (ntohl(tcp_hdr->th_ack) == ctx->current_sequence_num))
         {
             our_dprintf("seq_no: %d   %d\n", tcp_hdr->th_seq, tcp_hdr->th_win);
                 
