@@ -88,8 +88,12 @@ void transport_init(mysocket_t sd, bool_t is_active)
         recv_pkt_size = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
         if ((tcp_hdr->th_flags & TH_ACK) && (tcp_hdr->th_flags & TH_SYN) && (tcp_hdr->th_ack == ctx->current_sequence_num))
         {
+            our_dprintf("seq_no: %d   %d\n", tcp_hdr->th_seq, tcp_hdr->th_win);
+                
+                
             ctx->opp_sequence_num = ntohl(tcp_hdr->th_seq);
             ctx->opp_window_size = ntohs(tcp_hdr->th_win);
+            our_dprintf("seq_no: %d   %d\n", ctx->opp_sequence_num, ctx->opp_window_size);
         }
         else
         {
@@ -269,10 +273,10 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             {
                 /*--- Setting Context ---*/
                 our_dprintf("here 4");
-
+                our_dprintf("seq_no: %d   %d\n", tcp_hdr->th_seq, tcp_hdr->th_win);
                 ctx->opp_sequence_num = ntohl(tcp_hdr->th_seq);
                 ctx->opp_window_size = ntohs(tcp_hdr->th_win);
-                our_dprintf("seq_no: %d   %d", ctx->opp_sequence_num, ctx->opp_window_size);
+                our_dprintf("seq_no: %d   %d\n", ctx->opp_sequence_num, ctx->opp_window_size);
                 /*--- Sending Payload to app layer ---*/
                 payload1 = payload1+20;
                 payload_size = pkt_size-20;
