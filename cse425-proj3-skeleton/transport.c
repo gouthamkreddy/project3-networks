@@ -35,7 +35,7 @@ typedef struct
     tcp_seq initial_sequence_num;
     tcp_seq opp_sequence_num;
     tcp_seq ack_num;
-    // int opp_window_size;
+    int opp_window_size;
     tcp_seq current_sequence_num;
     tcp_seq fin_ack_sequence_num;
 
@@ -79,7 +79,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         tcp_hdr->th_seq = htonl(ctx->initial_sequence_num);
         tcp_hdr->th_off = 5;
         tcp_hdr->th_flags |= TH_SYN;
-        // tcp_hdr->th_win = htons(RECEIVER_WINDOW);
+        tcp_hdr->th_win = htons(RECEIVER_WINDOW);
         ctx->current_sequence_num++;
         send_pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
 
@@ -92,8 +92,8 @@ void transport_init(mysocket_t sd, bool_t is_active)
                 
                 
             ctx->opp_sequence_num = ntohl(tcp_hdr->th_seq);
-            // ctx->opp_window_size = ntohs(tcp_hdr->th_win);
-            our_dprintf("seq_no: %d   \n", ctx->opp_sequence_num);
+            ctx->opp_window_size = ntohs(tcp_hdr->th_win);
+            our_dprintf("seq_no: %d   %d\n", ctx->opp_sequence_num, ctx->opp_window_size);
         }
         else
         {
@@ -107,7 +107,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         tcp_hdr->th_ack = htonl(ctx->opp_sequence_num + 1);
         tcp_hdr->th_off = 5;
         tcp_hdr->th_flags |= TH_ACK;
-        // tcp_hdr->th_win = htons(RECEIVER_WINDOW);
+        tcp_hdr->th_win = htons(RECEIVER_WINDOW);
         ctx->current_sequence_num++;
         send_pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
 
@@ -118,8 +118,12 @@ void transport_init(mysocket_t sd, bool_t is_active)
         recv_pkt_size = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
         if (tcp_hdr->th_flags & TH_SYN)
         {
+                our_dprintf("seq_no: %d   %d\n", tcp_hdr->th_seq, tcp_hdr->th_win);
             ctx->opp_sequence_num = ntohl(tcp_hdr->th_seq);
-            // ctx->opp_window_size = ntohs(tcp_hdr->th_win);
+            ctx->opp_window_size = ntohs(tcp_hdr->th_win);
+            our_dprintf("seq_no: %d   %d\n", ctx->opp_sequence_num, ctx->opp_window_size);
+           
+           
         }
         else
         {
@@ -134,7 +138,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         tcp_hdr->th_off = 5;
         tcp_hdr->th_flags |= TH_SYN;
         tcp_hdr->th_flags |= TH_ACK;
-        // tcp_hdr->th_win = htons(RECEIVER_WINDOW);
+        tcp_hdr->th_win = htons(RECEIVER_WINDOW);
         ctx->current_sequence_num++;
         send_pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
 
@@ -144,7 +148,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         if ((tcp_hdr->th_flags & TH_ACK) && (tcp_hdr->th_ack == ctx->current_sequence_num))
         {
             ctx->opp_sequence_num = ntohl(tcp_hdr->th_seq);
-            // ctx->opp_window_size = ntohs(tcp_hdr->th_win);
+            ctx->opp_window_size = ntohs(tcp_hdr->th_win);
         }
 
     }
@@ -223,7 +227,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 our_dprintf("here 1");
                 /*--- Setting Context ---*/
                 ctx->ack_num = ntohl(tcp_hdr->th_ack);
-                // ctx->opp_window_size = ntohs(tcp_hdr->th_win);
+                ctx->opp_window_size = ntohs(tcp_hdr->th_win);
 
                 if (ntohl(tcp_hdr->th_ack) == ctx->fin_ack_sequence_num)
                 {
@@ -240,7 +244,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 stcp_fin_received(sd);
                 /*--- Setting Context ---*/
                 ctx->opp_sequence_num = ntohl(tcp_hdr->th_seq);
-                // ctx->opp_window_size = ntohs(tcp_hdr->th_win);
+                ctx->opp_window_size = ntohs(tcp_hdr->th_win);
 
                 /*--- Sending Payload to app layer if there is data ---*/
                 if (pkt_size > 20)
@@ -256,7 +260,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 tcp_hdr->th_ack = htonl(ctx->opp_sequence_num + 1);
                 tcp_hdr->th_off = 5;
                 tcp_hdr->th_flags |= TH_ACK;
-                // tcp_hdr->th_win = htons(RECEIVER_WINDOW);
+                tcp_hdr->th_win = htons(RECEIVER_WINDOW);
                 pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
                 if (ctx->connection_state == CSTATE_ESTABLISHED)
                 {
@@ -275,8 +279,8 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 our_dprintf("here 4");
                 our_dprintf("seq_no: %d   %d\n", tcp_hdr->th_seq, tcp_hdr->th_win);
                 ctx->opp_sequence_num = ntohl(tcp_hdr->th_seq);
-                // ctx->opp_window_size = ntohs(tcp_hdr->th_win);
-                our_dprintf("seq_no: %d   \n", ctx->opp_sequence_num);
+                ctx->opp_window_size = ntohs(tcp_hdr->th_win);
+                our_dprintf("seq_no: %d   %d\n", ctx->opp_sequence_num, ctx->opp_window_size);
                 /*--- Sending Payload to app layer ---*/
                 payload1 = payload1+20;
                 payload_size = pkt_size-20;
@@ -288,7 +292,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 tcp_hdr->th_ack = htonl(ctx->opp_sequence_num + payload_size);
                 tcp_hdr->th_off = 5;
                 tcp_hdr->th_flags |= TH_ACK;
-                // tcp_hdr->th_win = htons(RECEIVER_WINDOW);
+                tcp_hdr->th_win = htons(RECEIVER_WINDOW);
                 pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
             }
         }
@@ -306,7 +310,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
                 tcp_hdr->th_seq = htonl(ctx->current_sequence_num);
                 tcp_hdr->th_off = 5;
-                // tcp_hdr->th_win = htons(RECEIVER_WINDOW);
+                tcp_hdr->th_win = htons(RECEIVER_WINDOW);
                 if(payload_size > STCP_MSS)
                 {
                     pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), payload, STCP_MSS, NULL);
@@ -329,7 +333,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             tcp_hdr->th_seq = htonl(ctx->current_sequence_num);
             tcp_hdr->th_off = 5;
             tcp_hdr->th_flags |= TH_FIN;
-            // tcp_hdr->th_win = htons(RECEIVER_WINDOW);
+            tcp_hdr->th_win = htons(RECEIVER_WINDOW);
             ctx->current_sequence_num++;
             pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
             if (ctx->connection_state == CSTATE_ESTABLISHED)
