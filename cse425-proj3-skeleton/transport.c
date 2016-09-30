@@ -195,7 +195,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
     while (!ctx->done)
     {
         unsigned int event;
-       
+        our_dprintf("entered control loop\n");
         /* see stcp_api.h or stcp_api.c for details of this function */
         /* XXX: you will need to change some of these arguments! */
         event = stcp_wait_for_event(sd, ANY_EVENT, NULL);
@@ -216,6 +216,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             
             if (tcp_hdr->th_flags & TH_ACK)
             {
+                our_dprintf("here 1");
                 /*--- Setting Context ---*/
                 ctx->ack_num = ntohl(tcp_hdr->th_ack);
                 ctx->opp_window_size = ntohs(tcp_hdr->th_win);
@@ -230,6 +231,8 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             }
             else if (tcp_hdr->th_flags & TH_FIN)
             {
+                our_dprintf("here 2");
+
                 stcp_fin_received(sd);
                 /*--- Setting Context ---*/
                 ctx->opp_sequence_num = ntohl(tcp_hdr->th_seq);
@@ -242,6 +245,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                     payload_size = pkt_size-20;
                     stcp_app_send(sd, payload1, payload_size);
                 }
+                our_dprintf("here 3");
 
                 /*--- Sending Ack Packet ---*/
                 bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
@@ -264,6 +268,8 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             else
             {
                 /*--- Setting Context ---*/
+                our_dprintf("here 4");
+
                 ctx->opp_sequence_num = ntohl(tcp_hdr->th_seq);
                 ctx->opp_window_size = ntohs(tcp_hdr->th_win);
                 
@@ -271,6 +277,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
                 payload1 = payload1+20;
                 payload_size = pkt_size-20;
                 stcp_app_send(sd, payload1, payload_size);
+                our_dprintf("here 5");
 
                 /*--- Sending Ack Packet ---*/
                 bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
@@ -290,6 +297,8 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             
             while (payload_size > 0)
             {
+                our_dprintf("here 6");
+
                 bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
                 tcp_hdr->th_seq = htonl(ctx->current_sequence_num);
                 tcp_hdr->th_off = 5;
