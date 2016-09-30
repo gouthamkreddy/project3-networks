@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <arpa/inet.h>
+#include <time.h>
 #include "mysock.h"
 #include "stcp_api.h"
 #include "transport.h"
@@ -75,10 +76,10 @@ void transport_init(mysocket_t sd, bool_t is_active)
     if(is_active)
     {
         /*--- SYN Packet ---*/
-        tcp_hdr->th_seq = ctx->initial_sequence_num;
+        tcp_hdr->th_seq = htonl(ntohl(ctx->initial_sequence_num));
         tcp_hdr->th_off = 5;
         tcp_hdr->th_flags |= TH_SYN;
-        tcp_hdr->th_win = RECEIVER_WINDOW;
+        tcp_hdr->th_win = htons(ntohs(RECEIVER_WINDOW));
         ctx->current_sequence_num++;
         send_pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
 
@@ -98,11 +99,11 @@ void transport_init(mysocket_t sd, bool_t is_active)
 
         /*--- ACK Packet ---*/
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
-        tcp_hdr->th_seq = ctx->current_sequence_num;
-        tcp_hdr->th_ack = ctx->opp_sequence_num + 1;
+        tcp_hdr->th_seq = htonl(ntohl(ctx->current_sequence_num));
+        tcp_hdr->th_ack = htonl(ntohl(ctx->opp_sequence_num + 1));
         tcp_hdr->th_off = 5;
         tcp_hdr->th_flags |= TH_ACK;
-        tcp_hdr->th_win = RECEIVER_WINDOW;
+        tcp_hdr->th_win = htons(ntohs(RECEIVER_WINDOW));
         ctx->current_sequence_num++;
         send_pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
 
@@ -124,12 +125,12 @@ void transport_init(mysocket_t sd, bool_t is_active)
 
         /*--- SYN-ACK Packet ---*/
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
-        tcp_hdr->th_seq = ctx->current_sequence_num;
-        tcp_hdr->th_ack = ctx->opp_sequence_num + 1;
+        tcp_hdr->th_seq = htonl(ntohl(ctx->current_sequence_num));
+        tcp_hdr->th_ack = htonl(ntohl(ctx->opp_sequence_num + 1));
         tcp_hdr->th_off = 5;
         tcp_hdr->th_flags |= TH_SYN;
         tcp_hdr->th_flags |= TH_ACK;
-        tcp_hdr->th_win = RECEIVER_WINDOW;
+        tcp_hdr->th_win = htons(ntohs(RECEIVER_WINDOW));
         ctx->current_sequence_num++;
         send_pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
 
@@ -164,6 +165,7 @@ static void generate_initial_seq_num(context_t *ctx)
     ctx->initial_sequence_num = 1;
 #else
     /* you have to fill this up */
+    srand(time(NULL));
     int r = rand() % 256;
     ctx->initial_sequence_num = r;
     ctx->current_sequence_num = ctx->initial_sequence_num;
@@ -199,7 +201,7 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         event = stcp_wait_for_event(sd, ANY_EVENT, NULL);
         // our_dprintf("event occured %d\n", event);
         current_sender_window = SENDER_WINDOW - (ctx->current_sequence_num - ctx->ack_num);
-        our_dprintf("event: %d", event);
+        // our_dprintf("event: %d", event);
         /* check whether it was the network, app, or a close request */
         
         if (event & NETWORK_DATA)
@@ -243,10 +245,10 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 
                 /*--- Sending Ack Packet ---*/
                 bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
-                tcp_hdr->th_ack = ctx->opp_sequence_num + 1;
+                tcp_hdr->th_ack = htonl(ntohl(ctx->opp_sequence_num + 1));
                 tcp_hdr->th_off = 5;
                 tcp_hdr->th_flags |= TH_ACK;
-                tcp_hdr->th_win = RECEIVER_WINDOW;
+                tcp_hdr->th_win = htons(ntohs(RECEIVER_WINDOW));
                 pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
                 if (ctx->connection_state == CSTATE_ESTABLISHED)
                 {
@@ -272,10 +274,10 @@ static void control_loop(mysocket_t sd, context_t *ctx)
 
                 /*--- Sending Ack Packet ---*/
                 bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
-                tcp_hdr->th_ack = ctx->opp_sequence_num + payload_size;
+                tcp_hdr->th_ack = htonl(ntohl(ctx->opp_sequence_num + payload_size));
                 tcp_hdr->th_off = 5;
                 tcp_hdr->th_flags |= TH_ACK;
-                tcp_hdr->th_win = RECEIVER_WINDOW;
+                tcp_hdr->th_win = htons(ntohs(RECEIVER_WINDOW));
                 pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
             }
         }
@@ -289,9 +291,9 @@ static void control_loop(mysocket_t sd, context_t *ctx)
             while (payload_size > 0)
             {
                 bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
-                tcp_hdr->th_seq = ctx->current_sequence_num;
+                tcp_hdr->th_seq = htonl(ntohl(ctx->current_sequence_num));
                 tcp_hdr->th_off = 5;
-                tcp_hdr->th_win = RECEIVER_WINDOW;
+                tcp_hdr->th_win = htons(ntohs(RECEIVER_WINDOW));
                 if(payload_size > STCP_MSS)
                 {
                     pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), payload, STCP_MSS, NULL);
@@ -311,10 +313,10 @@ static void control_loop(mysocket_t sd, context_t *ctx)
         if (event & APP_CLOSE_REQUESTED)
         {   
             bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
-            tcp_hdr->th_seq = ctx->current_sequence_num;
+            tcp_hdr->th_seq = htonl(ntohl(ctx->current_sequence_num));
             tcp_hdr->th_off = 5;
             tcp_hdr->th_flags |= TH_FIN;
-            tcp_hdr->th_win = RECEIVER_WINDOW;
+            tcp_hdr->th_win = htons(ntohs(RECEIVER_WINDOW));
             ctx->current_sequence_num++;
             pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
             if (ctx->connection_state == CSTATE_ESTABLISHED)
