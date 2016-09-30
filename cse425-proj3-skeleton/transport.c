@@ -86,6 +86,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         /*--- Receive SYN-ACK Packet ---*/
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
         recv_pkt_size = stcp_network_recv(sd, tcp_hdr, sizeof(tcphdr));
+        our_dprintf("seq_no: %d   %d\n", tcp_hdr->th_seq, tcp_hdr->th_ack);
         if ((tcp_hdr->th_flags & TH_ACK) && (tcp_hdr->th_flags & TH_SYN) && (ntohl(tcp_hdr->th_ack) == ctx->current_sequence_num))
         {
             our_dprintf("seq_no: %d   %d\n", tcp_hdr->th_seq, tcp_hdr->th_win);
@@ -141,6 +142,7 @@ void transport_init(mysocket_t sd, bool_t is_active)
         tcp_hdr->th_win = htons(RECEIVER_WINDOW);
         ctx->current_sequence_num++;
         send_pkt_size = stcp_network_send(sd, tcp_hdr, sizeof(tcphdr), NULL);
+        our_dprintf("seq_no: %d   %d\n", tcp_hdr->th_seq, tcp_hdr->th_ack);
 
         /*--- Receive ACK Packet ---*/
         bzero((tcphdr *)tcp_hdr, sizeof(tcphdr));
